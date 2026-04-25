@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WarungQ - Aplikasi Kasir Warung</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
+        .modal-content { background: white; margin: 10% auto; padding: 20px; border-radius: 8px; max-width: 500px; width: 90%; }
+        .nav-link { cursor: pointer; transition: all 0.3s ease; }
+        .nav-link:hover { background-color: rgba(255,255,255,0.2); transform: translateY(-2px); }
+        .stok-rendah { color: #ef4444; font-weight: bold; }
+        .toast { position: fixed; bottom: 20px; right: 20px; background: #333; color: white; padding: 12px 24px; border-radius: 8px; display: none; z-index: 2000; animation: slideIn 0.3s ease; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        button { cursor: pointer; transition: all 0.2s ease; }
+        button:hover { transform: scale(0.98); }
+        .produk-card { transition: all 0.2s ease; }
+        .produk-card:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
+        .cart-item { animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+        .active-nav { background-color: rgba(255,255,255,0.2); font-weight: bold; }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <!-- NAVBAR -->
+    <nav class="bg-gradient-to-r from-green-600 to-green-700 text-white shadow-lg sticky top-0 z-50">
+        <div class="container mx-auto px-4 py-3">
+            <div class="flex justify-between items-center flex-wrap">
+                <h1 class="text-2xl font-bold">🏪 WarungQ</h1>
+                <div class="space-x-2 md:space-x-4 mt-2 md:mt-0">
+                    <button onclick="showPage('kasir')" id="navKasir" class="nav-link px-3 py-2 rounded text-sm md:text-base">🧾 Kasir</button>
+                    <button onclick="showPage('produk')" id="navProduk" class="nav-link px-3 py-2 rounded text-sm md:text-base">📦 Produk</button>
+                    <button onclick="showPage('riwayat')" id="navRiwayat" class="nav-link px-3 py-2 rounded text-sm md:text-base">💰 Riwayat</button>
+                    <button onclick="showPage('hutang')" id="navHutang" class="nav-link px-3 py-2 rounded text-sm md:text-base">📝 Hutang</button>
+                    <button onclick="showPage('laporan')" id="navLaporan" class="nav-link px-3 py-2 rounded text-sm md:text-base">📊 Laporan</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- MAIN CONTENT -->
+    <main class="container mx-auto px-4 py-8">
+        <div id="content">Loading...</div>
+    </main>
+
+    <!-- TOAST -->
+    <div id="toast" class="toast"></div>
+
+    <script>
+        // ============ KONFIGURASI ============
+        const auth = btoa('warung:admin123');
+        let keranjang = [];
+        
+        // ============ HELPER FUNCTIONS ============
+        function formatRupiah(angka) {
+            return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka);
+        }
+        
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.style.background = type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6';
+            toast.style.display = 'block';
+            setTimeout(() => { toast.style.display = 'none'; }, 3000);
+        }
+        
+        function setActiveNav(page) {
+            const navs = ['kasir', 'produk', 'riwayat', 'hutang', 'laporan'];
+            navs.forEach(nav => {
+                const el = document.getElementById(`nav${nav.charAt(0).toUpperCase() + nav.slice(1)}`);
+                if (el) {
+                    if (nav === page) el.classList.add('active-nav');
+                    else el.classList.remove('active-nav');
+                }
+            });
+        }
+        
+        // ============ API CALLS ============
+        async function apiFetch(url, options = {}) {
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    headers: {
+                        'Authorization': 'Basic ' + auth,
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    }
+                });
+                return await response.json();
+            } catch (error) {
+                console.error('API Error:', error);
+                return { success: false, message: error.message };
+            }
+        }
+        
+        async function getProduk() {
+            const data = await apiFetch('/api/produk');
+            return data.success ? data.data : [];
+        }
+        
+        async function createProduk(nama, harga, stok) {
+            return await apiFetch('/api/produk', {
+                method: 'POST',
+                body: JSON.stringify({ nama, harga: parseInt(harga), stok: parseInt(stok) })
+            });
+        }
+        
+        async function updateProduk(id, nama, harga, stok) {
+            return await apiFetch(`/api/produk/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ nama, harga: parseInt(harga), stok: parseInt(stok) })
+            });
+        }
+        
+        async function deleteProduk(id) {
+            return await apiFetch(`/api/produk/${id}`, { method: 'DELETE' });
+        }
+        
+        async function createTransaksi(produk_id, jumlah) {
+            return await apiFetch('/api/transaksi', {
+                method: 'POST',
+                body: JSON.stringify({ produk_id: parseInt(produk_id), jumlah: parseInt(jumlah) })
+            });
+        }
+        
+        async function getTransaksi() {
+            const data = await apiFetch('/api/transaksi');
+            return data.success ? data.data : [];
+        }
+        
+        async function getLaporanMingguan() {
+            const data = await apiFetch('/api/transaksi/laporan/mingguan');
+            return data.success ? data.data : [];
+        }
+        
+        async function getHutang() {
+            const data = await apiFetch('/api/hutang');
+            return data.success ? data.data : [];
+        }
+        
+        async function createHutang(nama_pelanggan, jumlah) {
+            return await apiFetch('/api/hutang', {
+                method: 'POST',
+                body: JSON.stringify({ nama_pelanggan, jumlah: parseInt(jumlah) })
+            });
+        }
+        
+        async function lunasiHutang(id) {
+            return await apiFetch(`/api/hutang/${id}/lunas`, { method: 'PUT' });
+        }
+        
+        async function hapusHutang(id) {
+            return await apiFetch(`/api/hutang/${id}`, { method: 'DELETE' });
+        }
+        
+        // ============ HALAMAN KASIR ============
+        async function renderKasir() {
+            setActiveNav('kasir');
+            const produk = await getProduk();
+            
+            const html = `
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Kiri: Daftar Produk -->
+                    <div class="lg:col-span-2">
+                        <div class="bg-white rounded-lg shadow p-6">
+                            <h2 class="text-xl font-bold mb-4">🛒 Pilih Produk</h2>
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                ${produk.map(p => `
+                                    <button onclick="tambahKeKeranjang(${p.id}, '${p.nama}', ${p.harga}, ${p.stok})" 
+                                        class="produk-card bg-gray-50 hover:bg-green-50 p-3 rounded-lg text-left transition border ${p.stok === 0 ? 'opacity-50 cursor-not-allowed border-red-200' : 'border-gray-200'}"
+                                        ${p.stok === 0 ? 'disabled' : ''}>
+                                        <p class="font-semibold text-sm md:text-base">${p.nama}</p>
+                                        <p class="text-green-600 text-sm md:text-base font-bold">${formatRupiah(p.harga)}</p>
+                                        <p class="text-xs text-gray-500">Stok: ${p.stok}</p>
+                                    </button>
+                                `).join('')}
+                                ${produk.length === 0 ? '<p class="col-span-3 text-center text-gray-500 py-8">Belum ada produk. Tambah produk dulu di menu Produk!</p>' : ''}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Kanan: Keranjang Belanja -->
+                    <div>
+                        <div class="bg-white rounded-lg shadow p-6 sticky top-4">
+                            <h2 class="text-xl font-bold mb-4">🧾 Keranjang Belanja</h2>
+                            <div id="daftarKeranjang" class="max-h-96 overflow-y-auto mb-4 min-h-32">
+                                <p class="text-center text-gray-500 py-8">Keranjang kosong</p>
+                            </div>
+                            <div class="border-t pt-4">
+                                <div class="flex justify-between mb-2">
+                                    <span class="font-semibold text-lg">Total:</span>
+                                    <span id="totalKeranjang" class="text-2xl font-bold text-green-600">Rp 0</span>
+                                </div>
+                                <div class="flex gap-2 mt-4">
+                                    <button onclick="resetKeranjang()" class="flex-1 bg-gray-500 text-white py-2 rounded hover:bg-gray-600">🗑️ Reset</button>
+                                    <button onclick="prosesPembayaran()" class="flex-1 bg-green-600 text-white py-2 rounded hover:bg-green-700 text-lg font-semibold">💳 Bayar</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Modal Pembayaran -->
+                <div id="modalBayar" class="modal">
+                    <div class="modal-content">
+                        <h3 class="text-xl font-bold mb-4">💵 Pembayaran</h3>
+                        <div class="mb-3 p-3 bg-gray-100 rounded">
+                            <p class="font-semibold">Total Belanja:</p>
+                            <p id="modalTotal" class="text-2xl font-bold text-green-600">Rp 0</p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="block mb-1 font-semibold">Jumlah Uang Dibayar</label>
+                            <input type="number" id="uangBayar" class="w-full p-3 border rounded text-lg" placeholder="Masukkan jumlah uang" autofocus>
+                        </div>
+                        <div class="mb-4 p-3 bg-blue-50 rounded">
+                            <p class="font-semibold">Kembalian:</p>
+                            <p id="kembalian" class="text-2xl font-bold text-blue-600">Rp 0</p>
+                        </div>
+                        <div class="flex justify-end gap-2">
+                            <button onclick="closeModalBayar()" class="bg-gray-500 text-white px-4 py-2 rounded">Batal</button>
+                            <button onclick="confirmBayar()" class="bg-green-600 text-white px-6 py-2 rounded text-lg">✅ Konfirmasi Bayar</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('content').innerHTML = html;
+            updateKeranjangDisplay();
+        }
+        
+        window.tambahKeKeranjang = (id, nama, harga, stok) => {
+            if (stok === 0) {
+                showToast(`Stok ${nama} habis!`, 'error');
+                return;
+            }
+            
+            const existing = keranjang.find(item => item.id === id);
+            if (existing) {
+                if (existing.jumlah + 1 > stok) {
+                    showToast(`Stok tidak cukup! ${nama} tersisa ${stok}`, 'error');
+                    return;
+                }
+                existing.jumlah++;
+                showToast(`${nama} +1 (${existing.jumlah})`);
+            } else {
+                keranjang.push({ id, nama, harga, jumlah: 1, maxStok: stok });
+                showToast(`${nama} ditambahkan ke keranjang`);
+            }
+            updateKeranjangDisplay();
+        };
+        
+        function updateKeranjangDisplay() {
+            const container = document.getElementById('daftarKeranjang');
+            const totalElement = document.getElementById('totalKeranjang');
+            
+            if (!container) return;
+            
+            if (keranjang.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-500 py-8">🧺 Keranjang kosong</p>';
+                totalElement.innerHTML = formatRupiah(0);
+                return;
+            }
+            
+            let total = 0;
+            let html = '';
+            
+            for (const item of keranjang) {
+                const subtotal = item.harga * item.jumlah;
+                total += subtotal;
+                html += `
+                    <div class="cart-item flex justify-between items-center border-b py-3">
+                        <div class="flex-1">
+                            <p class="font-semibold">${item.nama}</p>
+                            <p class="text-sm text-gray-500">${formatRupiah(item.harga)} x ${item.jumlah}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-bold text-green-600">${formatRupiah(subtotal)}</p>
+                            <div class="flex gap-1 mt-1">
+                                <button onclick="ubahJumlah(${item.id}, -1)" class="bg-yellow-500 text-white px-2 py-1 rounded text-xs w-6">-</button>
+                                <button onclick="ubahJumlah(${item.id}, 1)" class="bg-yellow-500 text-white px-2 py-1 rounded text-xs w-6">+</button>
+                                <button onclick="hapusDariKeranjang(${item.id})" class="bg-red-500 text-white px-2 py-1 rounded text-xs w-6">×</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            container.innerHTML = html;
+            totalElement.innerHTML = formatRupiah(total);
+        }
+        
+        window.ubahJumlah = (id, delta) => {
+            const item = keranjang.find(i => i.id === id);
+            if (item) {
+                const newJumlah = item.jumlah + delta;
+                if (newJumlah <= 0) {
+                    keranjang = keranjang.filter(i => i.id !== id);
+                    showToast(`${item.nama} dihapus dari keranjang`);
+                } else if (newJumlah <= item.maxStok) {
+                    item.jumlah = newJumlah;
+                } else {
+                    showToast(`Stok tidak cukup! ${item.nama} maksimal ${item.maxStok}`, 'error');
+                }
+                updateKeranjangDisplay();
+            }
+        };
+        
+        window.hapusDariKeranjang = (id) => {
+            const item = keranjang.find(i => i.id === id);
+            keranjang = keranjang.filter(i => i.id !== id);
+            updateKeranjangDisplay();
+            showToast(`${item?.nama} dihapus dari keranjang`);
+        };
+        
+        window.resetKeranjang = () => {
+            if (keranjang.length > 0 && confirm('Reset seluruh keranjang?')) {
+                keranjang = [];
+                updateKeranjangDisplay();
+                showToast('Keranjang direset');
+            }
+        };
+        
+        window.prosesPembayaran = () => {
+            if (keranjang.length === 0) {
+                showToast('Keranjang kosong!', 'error');
+                return;
+            }
+            
+            const total = keranjang.reduce((sum, item) => sum + (item.harga * item.jumlah), 0);
+            document.getElementById('modalTotal').innerHTML = formatRupiah(total);
+            document.getElementById('uangBayar').value = total;
+            document.getElementById('kembalian').innerHTML = formatRupiah(0);
+            document.getElementById('modalBayar').style.display = 'block';
+            setTimeout(() => document.getElementById('uangBayar').focus(), 100);
+        };
+        
+        window.closeModalBayar = () => {
+            document.getElementById('modalBayar').style.display = 'none';
+        };
+        
+        window.hitungKembalian = () => {
+            const total = keranjang.reduce((sum, item) => sum + (item.harga * item.jumlah), 0);
+            const bayar = parseInt(document.getElementById('uangBayar').value) || 0;
+            const kembali = bayar - total;
+            const kembaliElement = document.getElementById('kembalian');
+            
+            if (kembali < 0) {
+                kembaliElement.innerHTML = formatRupiah(Math.abs(kembali));
+                kembaliElement.classList.add('text-red-600');
+                kembaliElement.classList.remove('text-blue-600');
+                document.getElementById('kembalian').parentElement.classList.add('bg-red-50');
+                document.getElementById('kembalian').parentElement.classList.remove('bg-blue-50');
+            } else {
+                kembaliElement.innerHTML = formatRupiah(kembali);
+                kembaliElement.classList.add('text-blue-600');
+                kembaliElement.classList.remove('text-red-600');
+                document.getElementById('kembalian').parentElement.classList.add('bg-blue-50');
+                document.getElementById('kembalian').parentElement.classList.remove('bg-red-50');
+            }
+        };
+        
+        window.confirmBayar = async () => {
+            const total = keranjang.reduce((sum, item) => sum + (item.harga * item.jumlah), 0);
+            const bayar = parseInt(document.getElementById('uangBayar').value) || 0;
+            
+            if (bayar < total) {
+                showToast(`Uang kurang! Kurang ${formatRupiah(total - bayar)}`, 'error');
+                return;
+            }
+            
+            const kembali = bayar - total;
+            
+            showToast('Memproses transaksi...', 'info');
+            
+            let allSuccess = true;
+            let failedItems = [];
+            
+            for (const item of keranjang) {
+                const result = await createTransaksi(item.id, item.jumlah);
+                if (!result.success) {
+                    allSuccess = false;
+                    failedItems.push(item.nama);
+                }
+            }
+            
+            if (allSuccess) {
+                showToast(`✅ Transaksi berhasil! Total: ${formatRupiah(total)} | Kembali: ${formatRupiah(kembali)}`);
+                keranjang = [];
+                updateKeranjangDisplay();
+                closeModalBayar();
+                renderKasir();
+            } else {
+                showToast(`⚠️ Sebagian transaksi gagal: ${failedItems.join(', ')}. Cek stok!`, 'error');
+            }
+        };
+        
+        document.addEventListener('input', (e) => {
+            if (e.target.id === 'uangBayar') {
+                window.hitungKembalian();
+            }
+        });
+        
+        // ============ HALAMAN PRODUK ============
+        async function renderProduk() {
+            setActiveNav('produk');
+            const produk = await getProduk();
+            
+            const html = `
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex justify-between items-center mb-6 flex-wrap gap-2">
+                        <h2 class="text-2xl font-bold">📦 Manajemen Produk</h2>
+                        <button onclick="showTambahProduk()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">+ Tambah Produk</button>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="p-3 text-left">ID</th>
+                                    <th class="p-3 text-left">Nama</th>
+                                    <th class="p-3 text-left">Harga</th>
+                                    <th class="p-3 text-left">Stok</th>
+                                    <th class="p-3 text-left">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${produk.map(p => `
+                                    <tr class="border-b hover:bg-gray-50">
+                                        <td class="p-3">${p.id}</td>
+                                        <td class="p-3 font-semibold">${p.nama}</td>
+                                        <td class="p-3">${formatRupiah(p.harga)}</td>
+                                        <td class="p-3 ${p.stok < 5 ? 'stok-rendah' : ''}">${p.stok}</td>
+                                        <td class="p-3">
+                                            <button onclick="editProduk(${p.id}, '${p.nama}', ${p.harga}, ${p.stok})" class="text-blue-600 hover:text-blue-800 mr-2">✏️ Edit</button>
+                                            <button onclick="hapusProduk(${p.id})" class="text-red-600 hover:text-red-800">🗑️ Hapus</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                                ${produk.length === 0 ? '<tr><td colspan="5" class="text-center py-8 text-gray-500">Belum ada produk. Silakan tambah produk!</td></tr>' : ''}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Modal Tambah/Edit Produk -->
+                <div id="modalProduk" class="modal">
+                    <div class="modal-content">
+                        <h3 id="modalProdukTitle" class="text-xl font-bold mb-4">Tambah Produk</h3>
+                        <input type="hidden" id="editId">
+                        <input type="text" id="namaProduk" placeholder="Nama Produk" class="w-full p-2 border rounded mb-3">
+                        <input type="number" id="hargaProduk" placeholder="Harga" class="w-full p-2 border rounded mb-3">
+                        <input type="number" id="stokProduk" placeholder="Stok" class="w-full p-2 border rounded mb-3">
+                        <div class="flex justify-end gap-2">
+                            <button onclick="closeModalProduk()" class="bg-gray-500 text-white px-4 py-2 rounded">Batal</button>
+                            <button onclick="simpanProduk()" class="bg-green-600 text-white px-4 py-2 rounded">Simpan</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('content').innerHTML = html;
+        }
+        
+        window.showTambahProduk = () => {
+            document.getElementById('modalProdukTitle').innerHTML = 'Tambah Produk';
+            document.getElementById('editId').value = '';
+            document.getElementById('namaProduk').value = '';
+            document.getElementById('hargaProduk').value = '';
+            document.getElementById('stokProduk').value = '';
+            document.getElementById('modalProduk').style.display = 'block';
+        };
+        
+        window.editProduk = (id, nama, harga, stok) => {
+            document.getElementById('modalProdukTitle').innerHTML = 'Edit Produk';
+            document.getElementById('editId').value = id;
+            document.getElementById('namaProduk').value = nama;
+            document.getElementById('hargaProduk').value = harga;
+            document.getElementById('stokProduk').value = stok;
+            document.getElementById('modalProduk').style.display = 'block';
+        };
+        
+        window.closeModalProduk = () => {
+            document.getElementById('modalProduk').style.display = 'none';
+        };
+        
+        window.simpanProduk = async () => {
+            const id = document.getElementById('editId').value;
+            const nama = document.getElementById('namaProduk').value;
+            const harga = document.getElementById('hargaProduk').value;
+            const stok = document.getElementById('stokProduk').value;
+            
+            if (!nama || !harga) {
+                showToast('Lengkapi data!', 'error');
+                return;
+            }
+            
+            let result;
+            if (id) {
+                result = await updateProduk(id, nama, harga, stok);
+            } else {
+                result = await createProduk(nama, harga, stok);
+            }
+            
+            if (result.success) {
+                showToast(id ? 'Produk diupdate' : 'Produk ditambahkan');
+                closeModalProduk();
+                renderProduk();
+            } else {
+                showToast(result.message, 'error');
+            }
+        };
+        
+        window.hapusProduk = async (id) => {
+            if (confirm('Yakin hapus produk ini?')) {
+                const result = await deleteProduk(id);
+                if (result.success) {
+                    showToast('Produk dihapus');
+                    renderProduk();
+                }
+            }
+        };
+        
+        // ============ HALAMAN RIWAYAT ============
+        async function renderRiwayat() {
+            setActiveNav('riwayat');
+            const transaksi = await getTransaksi();
+            
+            const html = `
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-2xl font-bold mb-6">💰 Riwayat Transaksi</h2>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="p-3 text-left">ID</th>
+                                    <th class="p-3 text-left">Produk</th>
+                                    <th class="p-3 text-left">Jumlah</th>
+                                    <th class="p-3 text-left">Total</th>
+                                    <th class="p-3 text-left">Waktu</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${transaksi.map(t => `
+                                    <tr class="border-b hover:bg-gray-50">
+                                        <td class="p-3">${t.id}</td>
+                                        <td class="p-3 font-semibold">${t.produk_nama}</td>
+                                        <td class="p-3">${t.jumlah} x ${formatRupiah(t.total_harga / t.jumlah)}</td>
+                                        <td class="p-3 font-bold text-green-600">${formatRupiah(t.total_harga)}</td>
+                                        <td class="p-3 text-sm">${new Date(t.waktu).toLocaleString('id-ID')}</td>
+                                    </tr>
+                                `).join('')}
+                                ${transaksi.length === 0 ? '<tr><td colspan="5" class="text-center py-8 text-gray-500">Belum ada transaksi. Silakan transaksi di menu Kasir!</td></tr>' : ''}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+            document.getElementById('content').innerHTML = html;
+        }
+        
+        // ============ HALAMAN HUTANG ============
+        async function renderHutang() {
+            setActiveNav('hutang');
+            const hutang = await getHutang();
+            const total = hutang.filter(h => h.status === 'belum_lunas').reduce((s, h) => s + h.jumlah, 0);
+            
+            const html = `
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex justify-between items-center mb-6 flex-wrap gap-2">
+                        <h2 class="text-2xl font-bold">📝 Manajemen Hutang</h2>
+                        <button onclick="showTambahHutang()" class="bg-green-600 text-white px-4 py-2 rounded">+ Tambah Hutang</button>
+                    </div>
+                    <div class="bg-yellow-100 p-4 rounded mb-6">
+                        <p class="font-semibold">Total Hutang Belum Lunas:</p>
+                        <p class="text-2xl font-bold text-red-600">${formatRupiah(total)}</p>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-100">
+                                <tr>
+                                    <th class="p-3 text-left">Pelanggan</th>
+                                    <th class="p-3 text-left">Jumlah</th>
+                                    <th class="p-3 text-left">Status</th>
+                                    <th class="p-3 text-left">Tanggal</th>
+                                    <th class="p-3 text-left">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${hutang.map(h => `
+                                    <tr class="border-b hover:bg-gray-50">
+                                        <td class="p-3 font-semibold">${h.nama_pelanggan}</td>
+                                        <td class="p-3">${formatRupiah(h.jumlah)}</td>
+                                        <td class="p-3"><span class="px-2 py-1 rounded text-sm ${h.status === 'lunas' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${h.status === 'lunas' ? 'Lunas' : 'Belum Lunas'}</span></td>
+                                        <td class="p-3 text-sm">${new Date(h.created_at).toLocaleDateString('id-ID')}</td>
+                                        <td class="p-3">
+                                            ${h.status !== 'lunas' ? `<button onclick="lunasHutang(${h.id})" class="text-green-600 hover:text-green-800 mr-2">✅ Lunasi</button>` : ''}
+                                            <button onclick="hapusHutang(${h.id})" class="text-red-600 hover:text-red-800">🗑️</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                                ${hutang.length === 0 ? '<tr><td colspan="5" class="text-center py-8 text-gray-500">Belum ada data hutang</td></tr>' : ''}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div id="modalHutang" class="modal">
+                    <div class="modal-content">
+                        <h3 class="text-xl font-bold mb-4">Tambah Hutang</h3>
+                        <input type="text" id="namaPelanggan" placeholder="Nama Pelanggan" class="w-full p-2 border rounded mb-3">
+                        <input type="number" id="jumlahHutang" placeholder="Jumlah Hutang" class="w-full p-2 border rounded mb-3">
+                        <div class="flex justify-end gap-2">
+                            <button onclick="closeModalHutang()" class="bg-gray-500 text-white px-4 py-2 rounded">Batal</button>
+                            <button onclick="simpanHutang()" class="bg-green-600 text-white px-4 py-2 rounded">Simpan</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            document.getElementById('content').innerHTML = html;
+        }
+        
+        window.showTambahHutang = () => {
+            document.getElementById('namaPelanggan').value = '';
+            document.getElementById('jumlahHutang').value = '';
+            document.getElementById('modalHutang').style.display = 'block';
+        };
+        
+        window.closeModalHutang = () => {
+            document.getElementById('modalHutang').style.display = 'none';
+        };
+        
+        window.simpanHutang = async () => {
+            const nama = document.getElementById('namaPelanggan').value;
+            const jumlah = document.getElementById('jumlahHutang').value;
+            if (!nama || !jumlah) {
+                showToast('Lengkapi data', 'error');
+                return;
+            }
+            const result = await createHutang(nama, jumlah);
+            if (result.success) {
+                showToast('Hutang ditambahkan');
+                closeModalHutang();
+                renderHutang();
+            } else {
+                showToast(result.message, 'error');
+            }
+        };
+        
+        window.lunasHutang = async (id) => {
+            await lunasiHutang(id);
+            showToast('Hutang lunas');
+            renderHutang();
+        };
+        
+        window.hapusHutang = async (id) => {
+            if (confirm('Hapus hutang ini?')) {
+                await hapusHutang(id);
+                renderHutang();
+            }
+        };
+        
+        // ============ HALAMAN LAPORAN ============
+        async function renderLaporan() {
+            setActiveNav('laporan');
+            try {
+                document.getElementById('content').innerHTML = `<div class="bg-white rounded-lg shadow p-6 text-center"><p class="text-gray-500">📊 Memuat laporan...</p></div>`;
+                
+                const laporan = await getLaporanMingguan();
+                const total = laporan.reduce((s, i) => s + (i.omset || 0), 0);
+                
+                if (laporan.length === 0) {
+                    document.getElementById('content').innerHTML = `
+                        <div class="bg-white rounded-lg shadow p-6">
+                            <h2 class="text-2xl font-bold mb-6">📊 Laporan Penjualan</h2>
+                            <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">
+                                <p>⚠️ Belum ada data penjualan.</p>
+                                <p class="text-sm mt-2">Silakan transaksi di menu <strong>Kasir</strong>.</p>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let tabelHtml = `<div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-100"><tr><th class="p-3 text-left">Tanggal</th><th class="p-3 text-left">Omset</th></tr></thead><tbody>`;
+                for (const item of laporan) {
+                    tabelHtml += `<tr class="border-b hover:bg-gray-50"><td class="p-3">${item.tanggal}</td><td class="p-3 font-bold text-green-600">${formatRupiah(item.omset)}</td></tr>`;
+                }
+                tabelHtml += `</tbody></table></div>`;
+                
+                document.getElementById('content').innerHTML = `
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h2 class="text-2xl font-bold mb-6">📊 Laporan Penjualan 7 Hari Terakhir</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            <div class="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-lg">
+                                <p class="text-sm">Total Omset</p>
+                                <p class="text-2xl font-bold">${formatRupiah(total)}</p>
+                            </div>
+                            <div class="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-lg">
+                                <p class="text-sm">Periode</p>
+                                <p class="text-2xl font-bold">${laporan.length} Hari</p>
+                            </div>
+                        </div>
+                        <h3 class="text-lg font-bold mb-3">Detail Penjualan per Tanggal</h3>
+                        ${tabelHtml}
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('content').innerHTML = `<div class="bg-white rounded-lg shadow p-6"><div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded"><p>❌ Gagal memuat laporan</p></div></div>`;
+            }
+        }
+        
+        // ============ PAGE ROUTER ============
+        window.showPage = (page) => {
+            if (page === 'kasir') renderKasir();
+            else if (page === 'produk') renderProduk();
+            else if (page === 'riwayat') renderRiwayat();
+            else if (page === 'hutang') renderHutang();
+            else if (page === 'laporan') renderLaporan();
+        };
+        
+        // ============ LOAD HALAMAN DEFAULT ============
+        renderKasir();
+    </script>
+</body>
+</html>

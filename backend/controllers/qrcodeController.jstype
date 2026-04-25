@@ -1,0 +1,10 @@
+const express = require('express');
+const router = express.Router();
+const qrcodeController = require('../controllers/qrcodeController');
+const auth = require('../middleware/auth');
+
+router.use(auth);
+router.post('/payment', qrcodeController.generatePaymentQR);
+router.post('/whatsapp', qrcodeController.generateWhatsAppQR);
+
+module.exports = router;};  backend\server.js

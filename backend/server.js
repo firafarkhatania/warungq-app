@@ -1,0 +1,185 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const db = require('./utils/database');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.static(path.join(__dirname, '../frontend/public')));
+
+// ============ AUTH MIDDLEWARE ============
+const auth = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Basic ')) {
+        return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+    
+    const base64Credentials = authHeader.split(' ')[1];
+    const credentials = Buffer.from(base64Credentials, 'base64').toString('utf-8');
+    const [username, password] = credentials.split(':');
+    
+    if (username === 'warung' && password === 'admin123') {
+        next();
+    } else {
+        res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
+};
+
+// ============ API TEST ============
+app.get('/api/test', (req, res) => {
+    res.json({ message: 'Server WarungQ berjalan!' });
+});
+
+// ============ API PRODUK ============
+app.get('/api/produk', auth, (req, res) => {
+    try {
+        const produk = db.prepare('SELECT * FROM produk ORDER BY id DESC').all();
+        res.json({ success: true, data: produk });
+    } catch (error) {
+        res.json({ success: true, data: [] });
+    }
+});
+
+app.post('/api/produk', auth, (req, res) => {
+    try {
+        const { nama, harga, stok } = req.body;
+        const stmt = db.prepare('INSERT INTO produk (nama, harga, stok) VALUES (?, ?, ?)');
+        const result = stmt.run(nama, harga, stok || 0);
+        res.json({ success: true, data: { id: result.lastInsertRowid } });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.put('/api/produk/:id', auth, (req, res) => {
+    try {
+        const { nama, harga, stok } = req.body;
+        const stmt = db.prepare('UPDATE produk SET nama = ?, harga = ?, stok = ? WHERE id = ?');
+        const result = stmt.run(nama, harga, stok, req.params.id);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.delete('/api/produk/:id', auth, (req, res) => {
+    try {
+        db.prepare('DELETE FROM produk WHERE id = ?').run(req.params.id);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// ============ API TRANSAKSI ============
+// POST - Membuat transaksi baru
+app.post('/api/transaksi', auth, (req, res) => {
+    try {
+        const { produk_id, jumlah } = req.body;
+        
+        const produk = db.prepare('SELECT * FROM produk WHERE id = ?').get(produk_id);
+        if (!produk) {
+            return res.status(404).json({ success: false, message: 'Produk tidak ditemukan' });
+        }
+        
+        if (produk.stok < jumlah) {
+            return res.status(400).json({ success: false, message: 'Stok tidak mencukupi' });
+        }
+        
+        const total_harga = produk.harga * jumlah;
+        
+        // Kurangi stok
+        db.prepare('UPDATE produk SET stok = stok - ? WHERE id = ?').run(jumlah, produk_id);
+        
+        // Simpan transaksi
+        const stmt = db.prepare('INSERT INTO transaksi (produk_id, jumlah, total_harga) VALUES (?, ?, ?)');
+        const result = stmt.run(produk_id, jumlah, total_harga);
+        
+        res.json({ success: true, data: { id: result.lastInsertRowid, total_harga } });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// GET - Mengambil semua transaksi (untuk riwayat)
+app.get('/api/transaksi', auth, (req, res) => {
+    try {
+        const transaksi = db.prepare(`
+            SELECT t.*, p.nama as produk_nama 
+            FROM transaksi t 
+            JOIN produk p ON t.produk_id = p.id 
+            ORDER BY t.waktu DESC
+        `).all();
+        res.json({ success: true, data: transaksi });
+    } catch (error) {
+        console.error('Error get transaksi:', error);
+        res.json({ success: true, data: [] });
+    }
+});
+
+// GET - Laporan mingguan
+app.get('/api/transaksi/laporan/mingguan', auth, (req, res) => {
+    try {
+        const laporan = db.prepare(`
+            SELECT DATE(waktu) as tanggal, SUM(total_harga) as omset
+            FROM transaksi 
+            WHERE waktu >= DATE('now', '-7 days')
+            GROUP BY DATE(waktu)
+            ORDER BY tanggal DESC
+        `).all();
+        res.json({ success: true, data: laporan });
+    } catch (error) {
+        res.json({ success: true, data: [] });
+    }
+});
+
+// ============ API HUTANG ============
+app.get('/api/hutang', auth, (req, res) => {
+    try {
+        const hutang = db.prepare('SELECT * FROM hutang ORDER BY created_at DESC').all();
+        res.json({ success: true, data: hutang });
+    } catch (error) {
+        res.json({ success: true, data: [] });
+    }
+});
+
+app.post('/api/hutang', auth, (req, res) => {
+    try {
+        const { nama_pelanggan, jumlah } = req.body;
+        const stmt = db.prepare('INSERT INTO hutang (nama_pelanggan, jumlah) VALUES (?, ?)');
+        const result = stmt.run(nama_pelanggan, jumlah);
+        res.json({ success: true, data: { id: result.lastInsertRowid } });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.put('/api/hutang/:id/lunas', auth, (req, res) => {
+    try {
+        db.prepare('UPDATE hutang SET status = "lunas" WHERE id = ?').run(req.params.id);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.delete('/api/hutang/:id', auth, (req, res) => {
+    try {
+        db.prepare('DELETE FROM hutang WHERE id = ?').run(req.params.id);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// ============ JALANKAN SERVER ============
+app.listen(PORT, () => {
+    console.log(`✅ Server berjalan di http://localhost:${PORT}`);
+    console.log(`📝 Login: warung / admin123`);
+});

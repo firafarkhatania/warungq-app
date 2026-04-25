@@ -1,0 +1,30 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+
+const produkRoutes = require('./routes/produkRoutes');
+const transaksiRoutes = require('./routes/transaksiRoutes');
+const hutangRoutes = require('./routes/hutangRoutes');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, '../frontend/public')));
+
+// Routes API
+app.use('/api/produk', produkRoutes);
+app.use('/api/transaksi', transaksiRoutes);
+app.use('/api/hutang', hutangRoutes);
+
+// Test endpoint
+app.get('/api/test', (req, res) => {
+    res.json({ message: 'Server WarungQ berjalan!' });
+});
+
+app.listen(PORT, () => {
+    console.log(`✅ Server berjalan di http://localhost:${PORT}`);
+    console.log(`📝 Login: ${process.env.BASIC_AUTH_USER} / ${process.env.BASIC_AUTH_PASS}`);
+});
