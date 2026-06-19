@@ -96,7 +96,7 @@
         function setActiveNav(page) {
             const navs = ['kasir', 'produk', 'riwayat', 'hutang', 'laporan'];
             navs.forEach(nav => {
-                const el = document.getElementById(`nav${nav.charAt(0).toUpperCase() + nav.slice(1)}`);
+                const el = document.getElementById('nav' + nav.charAt(0).toUpperCase() + nav.slice(1));
                 if (el) {
                     if (nav === page) el.classList.add('active-nav');
                     else el.classList.remove('active-nav');
@@ -187,44 +187,45 @@
             updateKeranjangDisplay();
         }
 
-        window.tambahKeKeranjang = (id, nama, harga, stok) => {
+        window.tambahKeKeranjang = function(id, nama, harga, stok) {
             if (stok === 0) {
-                showToast(`Stok ${nama} habis!`, 'error');
+                showToast('Stok ' + nama + ' habis!', 'error');
                 return;
             }
 
-            const existing = keranjang.find(item => item.id === id);
+            var existing = keranjang.find(function(item) { return item.id === id; });
             if (existing) {
                 if (existing.jumlah + 1 > stok) {
-                    showToast(`Stok tidak cukup! ${nama} tersisa ${stok}`, 'error');
+                    showToast('Stok tidak cukup! ' + nama + ' tersisa ' + stok, 'error');
                     return;
                 }
                 existing.jumlah++;
-                showToast(`${nama} +1 (${existing.jumlah})`);
+                showToast(nama + ' +1 (' + existing.jumlah + ')');
             } else {
-                keranjang.push({ id, nama, harga, jumlah: 1, maxStok: stok });
-                showToast(`${nama} ditambahkan ke keranjang`);
+                keranjang.push({ id: id, nama: nama, harga: harga, jumlah: 1, maxStok: stok });
+                showToast(nama + ' ditambahkan ke keranjang');
             }
             updateKeranjangDisplay();
         };
 
         function updateKeranjangDisplay() {
-            const container = document.getElementById('daftarKeranjang');
-            const totalElement = document.getElementById('totalKeranjang');
+            var container = document.getElementById('daftarKeranjang');
+            var totalElement = document.getElementById('totalKeranjang');
 
             if (!container) return;
 
             if (keranjang.length === 0) {
                 container.innerHTML = '<p class="text-center text-gray-500 py-8">🧺 Keranjang kosong</p>';
-                totalElement.innerHTML = formatRupiah(0);
+                if (totalElement) totalElement.innerHTML = formatRupiah(0);
                 return;
             }
 
-            let total = 0;
-            let html = '';
+            var total = 0;
+            var html = '';
 
-            for (const item of keranjang) {
-                const subtotal = item.harga * item.jumlah;
+            for (var i = 0; i < keranjang.length; i++) {
+                var item = keranjang[i];
+                var subtotal = item.harga * item.jumlah;
                 total += subtotal;
                 html += `
                     <div class="cart-item flex justify-between items-center border-b py-3">
@@ -245,33 +246,46 @@
             }
 
             container.innerHTML = html;
-            totalElement.innerHTML = formatRupiah(total);
+            if (totalElement) totalElement.innerHTML = formatRupiah(total);
         }
 
-        window.ubahJumlah = (id, delta) => {
-            const item = keranjang.find(i => i.id === id);
-            if (item) {
-                const newJumlah = item.jumlah + delta;
+        window.ubahJumlah = function(id, delta) {
+            var index = -1;
+            for (var i = 0; i < keranjang.length; i++) {
+                if (keranjang[i].id === id) {
+                    index = i;
+                    break;
+                }
+            }
+            if (index !== -1) {
+                var item = keranjang[index];
+                var newJumlah = item.jumlah + delta;
                 if (newJumlah <= 0) {
-                    keranjang = keranjang.filter(i => i.id !== id);
-                    showToast(`${item.nama} dihapus dari keranjang`);
+                    keranjang.splice(index, 1);
+                    showToast(item.nama + ' dihapus dari keranjang');
                 } else if (newJumlah <= item.maxStok) {
                     item.jumlah = newJumlah;
                 } else {
-                    showToast(`Stok tidak cukup! ${item.nama} maksimal ${item.maxStok}`, 'error');
+                    showToast('Stok tidak cukup! ' + item.nama + ' maksimal ' + item.maxStok, 'error');
                 }
                 updateKeranjangDisplay();
             }
         };
 
-        window.hapusDariKeranjang = (id) => {
-            const item = keranjang.find(i => i.id === id);
-            keranjang = keranjang.filter(i => i.id !== id);
+        window.hapusDariKeranjang = function(id) {
+            var nama = '';
+            for (var i = 0; i < keranjang.length; i++) {
+                if (keranjang[i].id === id) {
+                    nama = keranjang[i].nama;
+                    break;
+                }
+            }
+            keranjang = keranjang.filter(function(item) { return item.id !== id; });
             updateKeranjangDisplay();
-            showToast(`${item?.nama} dihapus dari keranjang`);
+            if (nama) showToast(nama + ' dihapus dari keranjang');
         };
 
-        window.resetKeranjang = () => {
+        window.resetKeranjang = function() {
             if (keranjang.length > 0 && confirm('Reset seluruh keranjang?')) {
                 keranjang = [];
                 updateKeranjangDisplay();
@@ -279,29 +293,35 @@
             }
         };
 
-        window.prosesPembayaran = () => {
+        window.prosesPembayaran = function() {
             if (keranjang.length === 0) {
                 showToast('Keranjang kosong!', 'error');
                 return;
             }
 
-            const total = keranjang.reduce((sum, item) => sum + (item.harga * item.jumlah), 0);
+            var total = 0;
+            for (var i = 0; i < keranjang.length; i++) {
+                total += keranjang[i].harga * keranjang[i].jumlah;
+            }
             document.getElementById('modalTotal').innerHTML = formatRupiah(total);
             document.getElementById('uangBayar').value = total;
             document.getElementById('kembalian').innerHTML = formatRupiah(0);
             document.getElementById('modalBayar').style.display = 'block';
-            setTimeout(() => document.getElementById('uangBayar').focus(), 100);
+            setTimeout(function() { document.getElementById('uangBayar').focus(); }, 100);
         };
 
-        window.closeModalBayar = () => {
+        window.closeModalBayar = function() {
             document.getElementById('modalBayar').style.display = 'none';
         };
 
-        window.hitungKembalian = () => {
-            const total = keranjang.reduce((sum, item) => sum + (item.harga * item.jumlah), 0);
-            const bayar = parseInt(document.getElementById('uangBayar').value) || 0;
-            const kembali = bayar - total;
-            const kembaliElement = document.getElementById('kembalian');
+        window.hitungKembalian = function() {
+            var total = 0;
+            for (var i = 0; i < keranjang.length; i++) {
+                total += keranjang[i].harga * keranjang[i].jumlah;
+            }
+            var bayar = parseInt(document.getElementById('uangBayar').value) || 0;
+            var kembali = bayar - total;
+            var kembaliElement = document.getElementById('kembalian');
 
             if (kembali < 0) {
                 kembaliElement.innerHTML = formatRupiah(Math.abs(kembali));
@@ -318,30 +338,37 @@
             }
         };
 
-        window.confirmBayar = () => {
-            const total = keranjang.reduce((sum, item) => sum + (item.harga * item.jumlah), 0);
-            const bayar = parseInt(document.getElementById('uangBayar').value) || 0;
+        window.confirmBayar = function() {
+            var total = 0;
+            for (var i = 0; i < keranjang.length; i++) {
+                total += keranjang[i].harga * keranjang[i].jumlah;
+            }
+            var bayar = parseInt(document.getElementById('uangBayar').value) || 0;
 
             if (bayar < total) {
-                showToast(`Uang kurang! Kurang ${formatRupiah(total - bayar)}`, 'error');
+                showToast('Uang kurang! Kurang ' + formatRupiah(total - bayar), 'error');
                 return;
             }
 
-            const kembali = bayar - total;
+            var kembali = bayar - total;
 
             // Kurangi stok produk
-            const produk = getProduk();
-            for (const item of keranjang) {
-                const p = produk.find(pr => pr.id === item.id);
-                if (p) {
-                    p.stok -= item.jumlah;
+            var produk = getProduk();
+            for (var i = 0; i < keranjang.length; i++) {
+                var item = keranjang[i];
+                for (var j = 0; j < produk.length; j++) {
+                    if (produk[j].id === item.id) {
+                        produk[j].stok -= item.jumlah;
+                        break;
+                    }
                 }
             }
             setProduk(produk);
 
             // Simpan transaksi
-            const transaksi = getTransaksi();
-            for (const item of keranjang) {
+            var transaksi = getTransaksi();
+            for (var i = 0; i < keranjang.length; i++) {
+                var item = keranjang[i];
                 transaksi.push({
                     id: getNextId(),
                     produk_nama: item.nama,
@@ -352,14 +379,14 @@
             }
             setTransaksi(transaksi);
 
-            showToast(`✅ Transaksi berhasil! Total: ${formatRupiah(total)} | Kembali: ${formatRupiah(kembali)}`);
+            showToast('✅ Transaksi berhasil! Total: ' + formatRupiah(total) + ' | Kembali: ' + formatRupiah(kembali));
             keranjang = [];
             updateKeranjangDisplay();
             closeModalBayar();
             renderKasir();
         };
 
-        document.addEventListener('input', (e) => {
+        document.addEventListener('input', function(e) {
             if (e.target.id === 'uangBayar') {
                 window.hitungKembalian();
             }
@@ -368,9 +395,9 @@
         // ============ HALAMAN PRODUK ============
         async function renderProduk() {
             setActiveNav('produk');
-            const produk = getProduk();
+            var produk = getProduk();
 
-            const html = `
+            var html = `
                 <div class="bg-white rounded-lg shadow p-6">
                     <div class="flex justify-between items-center mb-6 flex-wrap gap-2">
                         <h2 class="text-2xl font-bold">📦 Manajemen Produk</h2>
@@ -388,7 +415,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                ${produk.map(p => `
+                                ${produk.map(function(p) { return `
                                     <tr class="border-b hover:bg-gray-50">
                                         <td class="p-3">${p.id}</td>
                                         <td class="p-3 font-semibold">${p.nama}</td>
@@ -399,7 +426,7 @@
                                             <button onclick="hapusProduk(${p.id})" class="text-red-600 hover:text-red-800">🗑️ Hapus</button>
                                         </td>
                                     </tr>
-                                `).join('')}
+                                `}).join('')}
                                 ${produk.length === 0 ? '<tr><td colspan="5" class="text-center py-8 text-gray-500">Belum ada produk. Silakan tambah produk!</td></tr>' : ''}
                             </tbody>
                         </table>
@@ -423,7 +450,7 @@
             document.getElementById('content').innerHTML = html;
         }
 
-        window.showTambahProduk = () => {
+        window.showTambahProduk = function() {
             document.getElementById('modalProdukTitle').innerHTML = 'Tambah Produk';
             document.getElementById('editId').value = '';
             document.getElementById('namaProduk').value = '';
@@ -432,7 +459,7 @@
             document.getElementById('modalProduk').style.display = 'block';
         };
 
-        window.editProduk = (id, nama, harga, stok) => {
+        window.editProduk = function(id, nama, harga, stok) {
             document.getElementById('modalProdukTitle').innerHTML = 'Edit Produk';
             document.getElementById('editId').value = id;
             document.getElementById('namaProduk').value = nama;
@@ -441,32 +468,34 @@
             document.getElementById('modalProduk').style.display = 'block';
         };
 
-        window.closeModalProduk = () => {
+        window.closeModalProduk = function() {
             document.getElementById('modalProduk').style.display = 'none';
         };
 
-        window.simpanProduk = () => {
-            const id = document.getElementById('editId').value;
-            const nama = document.getElementById('namaProduk').value;
-            const harga = parseInt(document.getElementById('hargaProduk').value);
-            const stok = parseInt(document.getElementById('stokProduk').value) || 0;
+        window.simpanProduk = function() {
+            var id = document.getElementById('editId').value;
+            var nama = document.getElementById('namaProduk').value;
+            var harga = parseInt(document.getElementById('hargaProduk').value);
+            var stok = parseInt(document.getElementById('stokProduk').value) || 0;
 
             if (!nama || !harga) {
                 showToast('Lengkapi data!', 'error');
                 return;
             }
 
-            const produk = getProduk();
+            var produk = getProduk();
 
             if (id) {
-                const index = produk.findIndex(p => p.id === parseInt(id));
-                if (index !== -1) {
-                    produk[index].nama = nama;
-                    produk[index].harga = harga;
-                    produk[index].stok = stok;
+                for (var i = 0; i < produk.length; i++) {
+                    if (produk[i].id === parseInt(id)) {
+                        produk[i].nama = nama;
+                        produk[i].harga = harga;
+                        produk[i].stok = stok;
+                        break;
+                    }
                 }
             } else {
-                produk.push({ id: getNextId(), nama, harga, stok });
+                produk.push({ id: getNextId(), nama: nama, harga: harga, stok: stok });
             }
 
             setProduk(produk);
@@ -475,10 +504,10 @@
             renderProduk();
         };
 
-        window.hapusProduk = (id) => {
+        window.hapusProduk = function(id) {
             if (confirm('Yakin hapus produk ini?')) {
-                let produk = getProduk();
-                produk = produk.filter(p => p.id !== id);
+                var produk = getProduk();
+                produk = produk.filter(function(p) { return p.id !== id; });
                 setProduk(produk);
                 showToast('Produk dihapus');
                 renderProduk();
@@ -488,9 +517,9 @@
         // ============ HALAMAN RIWAYAT ============
         async function renderRiwayat() {
             setActiveNav('riwayat');
-            const transaksi = getTransaksi();
+            var transaksi = getTransaksi();
 
-            const html = `
+            var html = `
                 <div class="bg-white rounded-lg shadow p-6">
                     <h2 class="text-2xl font-bold mb-6">💰 Riwayat Transaksi</h2>
                     <div class="overflow-x-auto">
@@ -505,7 +534,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                ${transaksi.map(t => `
+                                ${transaksi.map(function(t) { return `
                                     <tr class="border-b hover:bg-gray-50">
                                         <td class="p-3">${t.id}</td>
                                         <td class="p-3 font-semibold">${t.produk_nama}</td>
@@ -513,7 +542,7 @@
                                         <td class="p-3 font-bold text-green-600">${formatRupiah(t.total_harga)}</td>
                                         <td class="p-3 text-sm">${new Date(t.waktu).toLocaleString('id-ID')}</td>
                                     </tr>
-                                `).join('')}
+                                `}).join('')}
                                 ${transaksi.length === 0 ? '<tr><td colspan="5" class="text-center py-8 text-gray-500">Belum ada transaksi. Silakan transaksi di menu Kasir!</td></tr>' : ''}
                             </tbody>
                         </table>
@@ -526,10 +555,15 @@
         // ============ HALAMAN HUTANG ============
         async function renderHutang() {
             setActiveNav('hutang');
-            const hutang = getHutang();
-            const total = hutang.filter(h => h.status === 'belum_lunas').reduce((s, h) => s + h.jumlah, 0);
+            var hutang = getHutang();
+            var total = 0;
+            for (var i = 0; i < hutang.length; i++) {
+                if (hutang[i].status === 'belum_lunas') {
+                    total += hutang[i].jumlah;
+                }
+            }
 
-            const html = `
+            var html = `
                 <div class="bg-white rounded-lg shadow p-6">
                     <div class="flex justify-between items-center mb-6 flex-wrap gap-2">
                         <h2 class="text-2xl font-bold">📝 Manajemen Hutang</h2>
@@ -551,18 +585,18 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                ${hutang.map(h => `
+                                ${hutang.map(function(h) { return `
                                     <tr class="border-b hover:bg-gray-50">
                                         <td class="p-3 font-semibold">${h.nama_pelanggan}</td>
                                         <td class="p-3">${formatRupiah(h.jumlah)}</td>
                                         <td class="p-3"><span class="px-2 py-1 rounded text-sm ${h.status === 'lunas' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${h.status === 'lunas' ? 'Lunas' : 'Belum Lunas'}</span></td>
                                         <td class="p-3 text-sm">${new Date(h.created_at).toLocaleDateString('id-ID')}</td>
                                         <td class="p-3">
-                                            ${h.status !== 'lunas' ? `<button onclick="lunasHutang(${h.id})" class="text-green-600 hover:text-green-800 mr-2">✅ Lunasi</button>` : ''}
+                                            ${h.status !== 'lunas' ? '<button onclick="lunasHutang(' + h.id + ')" class="text-green-600 hover:text-green-800 mr-2">✅ Lunasi</button>' : ''}
                                             <button onclick="hapusHutang(${h.id})" class="text-red-600 hover:text-red-800">🗑️</button>
                                         </td>
                                     </tr>
-                                `).join('')}
+                                `}).join('')}
                                 ${hutang.length === 0 ? '<tr><td colspan="5" class="text-center py-8 text-gray-500">Belum ada data hutang</td></tr>' : ''}
                             </tbody>
                         </table>
@@ -584,26 +618,26 @@
             document.getElementById('content').innerHTML = html;
         }
 
-        window.showTambahHutang = () => {
+        window.showTambahHutang = function() {
             document.getElementById('namaPelanggan').value = '';
             document.getElementById('jumlahHutang').value = '';
             document.getElementById('modalHutang').style.display = 'block';
         };
 
-        window.closeModalHutang = () => {
+        window.closeModalHutang = function() {
             document.getElementById('modalHutang').style.display = 'none';
         };
 
-        window.simpanHutang = () => {
-            const nama = document.getElementById('namaPelanggan').value;
-            const jumlah = parseInt(document.getElementById('jumlahHutang').value);
+        window.simpanHutang = function() {
+            var nama = document.getElementById('namaPelanggan').value;
+            var jumlah = parseInt(document.getElementById('jumlahHutang').value);
 
             if (!nama || !jumlah) {
                 showToast('Lengkapi data', 'error');
                 return;
             }
 
-            const hutang = getHutang();
+            var hutang = getHutang();
             hutang.push({
                 id: getNextId(),
                 nama_pelanggan: nama,
@@ -617,21 +651,23 @@
             renderHutang();
         };
 
-        window.lunasHutang = (id) => {
-            const hutang = getHutang();
-            const h = hutang.find(item => item.id === id);
-            if (h) {
-                h.status = 'lunas';
-                setHutang(hutang);
-                showToast('Hutang lunas');
-                renderHutang();
+        window.lunasHutang = function(id) {
+            var hutang = getHutang();
+            for (var i = 0; i < hutang.length; i++) {
+                if (hutang[i].id === id) {
+                    hutang[i].status = 'lunas';
+                    break;
+                }
             }
+            setHutang(hutang);
+            showToast('Hutang lunas');
+            renderHutang();
         };
 
-        window.hapusHutang = (id) => {
+        window.hapusHutang = function(id) {
             if (confirm('Hapus hutang ini?')) {
-                let hutang = getHutang();
-                hutang = hutang.filter(h => h.id !== id);
+                var hutang = getHutang();
+                hutang = hutang.filter(function(h) { return h.id !== id; });
                 setHutang(hutang);
                 renderHutang();
             }
@@ -640,22 +676,26 @@
         // ============ HALAMAN LAPORAN ============
         async function renderLaporan() {
             setActiveNav('laporan');
-            const transaksi = getTransaksi();
+            var transaksi = getTransaksi();
 
-            // Group by date
-            const laporanMap = {};
-            for (const t of transaksi) {
-                const date = new Date(t.waktu).toLocaleDateString('id-ID');
+            var laporanMap = {};
+            for (var i = 0; i < transaksi.length; i++) {
+                var t = transaksi[i];
+                var date = new Date(t.waktu).toLocaleDateString('id-ID');
                 if (!laporanMap[date]) laporanMap[date] = 0;
                 laporanMap[date] += t.total_harga;
             }
 
-            const laporan = Object.keys(laporanMap).map(tanggal => ({
-                tanggal,
-                omset: laporanMap[tanggal]
-            })).sort((a, b) => new Date(a.tanggal) - new Date(b.tanggal));
+            var laporan = [];
+            for (var key in laporanMap) {
+                laporan.push({ tanggal: key, omset: laporanMap[key] });
+            }
+            laporan.sort(function(a, b) { return new Date(a.tanggal) - new Date(b.tanggal); });
 
-            const total = laporan.reduce((s, i) => s + i.omset, 0);
+            var total = 0;
+            for (var i = 0; i < laporan.length; i++) {
+                total += laporan[i].omset;
+            }
 
             if (laporan.length === 0) {
                 document.getElementById('content').innerHTML = `
@@ -670,11 +710,11 @@
                 return;
             }
 
-            let tabelHtml = `<div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-100"><tr><th class="p-3 text-left">Tanggal</th><th class="p-3 text-left">Omset</th></tr></thead><tbody>`;
-            for (const item of laporan) {
-                tabelHtml += `<tr class="border-b hover:bg-gray-50"><td class="p-3">${item.tanggal}</td><td class="p-3 font-bold text-green-600">${formatRupiah(item.omset)}</td></tr>`;
+            var tabelHtml = '<div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-100"><tr><th class="p-3 text-left">Tanggal</th><th class="p-3 text-left">Omset</th></tr></thead><tbody>';
+            for (var i = 0; i < laporan.length; i++) {
+                tabelHtml += '<tr class="border-b hover:bg-gray-50"><td class="p-3">' + laporan[i].tanggal + '</td><td class="p-3 font-bold text-green-600">' + formatRupiah(laporan[i].omset) + '</td></tr>';
             }
-            tabelHtml += `</tbody></table></div>`;
+            tabelHtml += '</tbody></table></div>';
 
             document.getElementById('content').innerHTML = `
                 <div class="bg-white rounded-lg shadow p-6">
@@ -696,7 +736,7 @@
         }
 
         // ============ PAGE ROUTER ============
-        window.showPage = (page) => {
+        window.showPage = function(page) {
             if (page === 'kasir') renderKasir();
             else if (page === 'produk') renderProduk();
             else if (page === 'riwayat') renderRiwayat();
