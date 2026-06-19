@@ -49,15 +49,42 @@
     <div id="toast" class="toast"></div>
 
     <script>
-        // ============ KONFIGURASI ============
-        const auth = btoa('warung:admin123');
-        let keranjang = [];
-        
+        // ============ LOCAL STORAGE FUNCTIONS ============
+        function getData(key, defaultData) {
+            try {
+                const data = localStorage.getItem('warungq_' + key);
+                return data ? JSON.parse(data) : defaultData;
+            } catch {
+                return defaultData;
+            }
+        }
+
+        function setData(key, data) {
+            localStorage.setItem('warungq_' + key, JSON.stringify(data));
+        }
+
+        function getProduk() { return getData('produk', []); }
+        function setProduk(data) { setData('produk', data); }
+
+        function getTransaksi() { return getData('transaksi', []); }
+        function setTransaksi(data) { setData('transaksi', data); }
+
+        function getHutang() { return getData('hutang', []); }
+        function setHutang(data) { setData('hutang', data); }
+
+        let nextId = getData('nextId', 1);
+        function getNextId() {
+            const id = nextId;
+            nextId++;
+            setData('nextId', nextId);
+            return id;
+        }
+
         // ============ HELPER FUNCTIONS ============
         function formatRupiah(angka) {
             return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(angka);
         }
-        
+
         function showToast(message, type = 'success') {
             const toast = document.getElementById('toast');
             toast.textContent = message;
@@ -65,7 +92,7 @@
             toast.style.display = 'block';
             setTimeout(() => { toast.style.display = 'none'; }, 3000);
         }
-        
+
         function setActiveNav(page) {
             const navs = ['kasir', 'produk', 'riwayat', 'hutang', 'laporan'];
             navs.forEach(nav => {
@@ -76,93 +103,25 @@
                 }
             });
         }
-        
-        // ============ API CALLS ============
-        async function apiFetch(url, options = {}) {
-            try {
-                const response = await fetch(url, {
-                    ...options,
-                    headers: {
-                        'Authorization': 'Basic ' + auth,
-                        'Content-Type': 'application/json',
-                        ...options.headers
-                    }
-                });
-                return await response.json();
-            } catch (error) {
-                console.error('API Error:', error);
-                return { success: false, message: error.message };
-            }
+
+        // ============ DATA DEFAULT ============
+        if (getProduk().length === 0) {
+            setProduk([
+                { id: getNextId(), nama: 'Teh', harga: 5000, stok: 100 },
+                { id: getNextId(), nama: 'Kopi', harga: 8000, stok: 50 },
+                { id: getNextId(), nama: 'Roti', harga: 10000, stok: 30 }
+            ]);
         }
-        
-        async function getProduk() {
-            const data = await apiFetch('/api/produk');
-            return data.success ? data.data : [];
-        }
-        
-        async function createProduk(nama, harga, stok) {
-            return await apiFetch('/api/produk', {
-                method: 'POST',
-                body: JSON.stringify({ nama, harga: parseInt(harga), stok: parseInt(stok) })
-            });
-        }
-        
-        async function updateProduk(id, nama, harga, stok) {
-            return await apiFetch(`/api/produk/${id}`, {
-                method: 'PUT',
-                body: JSON.stringify({ nama, harga: parseInt(harga), stok: parseInt(stok) })
-            });
-        }
-        
-        async function deleteProduk(id) {
-            return await apiFetch(`/api/produk/${id}`, { method: 'DELETE' });
-        }
-        
-        async function createTransaksi(produk_id, jumlah) {
-            return await apiFetch('/api/transaksi', {
-                method: 'POST',
-                body: JSON.stringify({ produk_id: parseInt(produk_id), jumlah: parseInt(jumlah) })
-            });
-        }
-        
-        async function getTransaksi() {
-            const data = await apiFetch('/api/transaksi');
-            return data.success ? data.data : [];
-        }
-        
-        async function getLaporanMingguan() {
-            const data = await apiFetch('/api/transaksi/laporan/mingguan');
-            return data.success ? data.data : [];
-        }
-        
-        async function getHutang() {
-            const data = await apiFetch('/api/hutang');
-            return data.success ? data.data : [];
-        }
-        
-        async function createHutang(nama_pelanggan, jumlah) {
-            return await apiFetch('/api/hutang', {
-                method: 'POST',
-                body: JSON.stringify({ nama_pelanggan, jumlah: parseInt(jumlah) })
-            });
-        }
-        
-        async function lunasiHutang(id) {
-            return await apiFetch(`/api/hutang/${id}/lunas`, { method: 'PUT' });
-        }
-        
-        async function hapusHutang(id) {
-            return await apiFetch(`/api/hutang/${id}`, { method: 'DELETE' });
-        }
-        
+
         // ============ HALAMAN KASIR ============
+        let keranjang = [];
+
         async function renderKasir() {
             setActiveNav('kasir');
-            const produk = await getProduk();
-            
+            const produk = getProduk();
+
             const html = `
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <!-- Kiri: Daftar Produk -->
                     <div class="lg:col-span-2">
                         <div class="bg-white rounded-lg shadow p-6">
                             <h2 class="text-xl font-bold mb-4">🛒 Pilih Produk</h2>
@@ -180,8 +139,7 @@
                             </div>
                         </div>
                     </div>
-                    
-                    <!-- Kanan: Keranjang Belanja -->
+
                     <div>
                         <div class="bg-white rounded-lg shadow p-6 sticky top-4">
                             <h2 class="text-xl font-bold mb-4">🧾 Keranjang Belanja</h2>
@@ -201,8 +159,7 @@
                         </div>
                     </div>
                 </div>
-                
-                <!-- Modal Pembayaran -->
+
                 <div id="modalBayar" class="modal">
                     <div class="modal-content">
                         <h3 class="text-xl font-bold mb-4">💵 Pembayaran</h3>
@@ -225,17 +182,17 @@
                     </div>
                 </div>
             `;
-            
+
             document.getElementById('content').innerHTML = html;
             updateKeranjangDisplay();
         }
-        
+
         window.tambahKeKeranjang = (id, nama, harga, stok) => {
             if (stok === 0) {
                 showToast(`Stok ${nama} habis!`, 'error');
                 return;
             }
-            
+
             const existing = keranjang.find(item => item.id === id);
             if (existing) {
                 if (existing.jumlah + 1 > stok) {
@@ -250,22 +207,22 @@
             }
             updateKeranjangDisplay();
         };
-        
+
         function updateKeranjangDisplay() {
             const container = document.getElementById('daftarKeranjang');
             const totalElement = document.getElementById('totalKeranjang');
-            
+
             if (!container) return;
-            
+
             if (keranjang.length === 0) {
                 container.innerHTML = '<p class="text-center text-gray-500 py-8">🧺 Keranjang kosong</p>';
                 totalElement.innerHTML = formatRupiah(0);
                 return;
             }
-            
+
             let total = 0;
             let html = '';
-            
+
             for (const item of keranjang) {
                 const subtotal = item.harga * item.jumlah;
                 total += subtotal;
@@ -286,11 +243,11 @@
                     </div>
                 `;
             }
-            
+
             container.innerHTML = html;
             totalElement.innerHTML = formatRupiah(total);
         }
-        
+
         window.ubahJumlah = (id, delta) => {
             const item = keranjang.find(i => i.id === id);
             if (item) {
@@ -306,14 +263,14 @@
                 updateKeranjangDisplay();
             }
         };
-        
+
         window.hapusDariKeranjang = (id) => {
             const item = keranjang.find(i => i.id === id);
             keranjang = keranjang.filter(i => i.id !== id);
             updateKeranjangDisplay();
             showToast(`${item?.nama} dihapus dari keranjang`);
         };
-        
+
         window.resetKeranjang = () => {
             if (keranjang.length > 0 && confirm('Reset seluruh keranjang?')) {
                 keranjang = [];
@@ -321,13 +278,13 @@
                 showToast('Keranjang direset');
             }
         };
-        
+
         window.prosesPembayaran = () => {
             if (keranjang.length === 0) {
                 showToast('Keranjang kosong!', 'error');
                 return;
             }
-            
+
             const total = keranjang.reduce((sum, item) => sum + (item.harga * item.jumlah), 0);
             document.getElementById('modalTotal').innerHTML = formatRupiah(total);
             document.getElementById('uangBayar').value = total;
@@ -335,17 +292,17 @@
             document.getElementById('modalBayar').style.display = 'block';
             setTimeout(() => document.getElementById('uangBayar').focus(), 100);
         };
-        
+
         window.closeModalBayar = () => {
             document.getElementById('modalBayar').style.display = 'none';
         };
-        
+
         window.hitungKembalian = () => {
             const total = keranjang.reduce((sum, item) => sum + (item.harga * item.jumlah), 0);
             const bayar = parseInt(document.getElementById('uangBayar').value) || 0;
             const kembali = bayar - total;
             const kembaliElement = document.getElementById('kembalian');
-            
+
             if (kembali < 0) {
                 kembaliElement.innerHTML = formatRupiah(Math.abs(kembali));
                 kembaliElement.classList.add('text-red-600');
@@ -360,53 +317,59 @@
                 document.getElementById('kembalian').parentElement.classList.remove('bg-red-50');
             }
         };
-        
-        window.confirmBayar = async () => {
+
+        window.confirmBayar = () => {
             const total = keranjang.reduce((sum, item) => sum + (item.harga * item.jumlah), 0);
             const bayar = parseInt(document.getElementById('uangBayar').value) || 0;
-            
+
             if (bayar < total) {
                 showToast(`Uang kurang! Kurang ${formatRupiah(total - bayar)}`, 'error');
                 return;
             }
-            
+
             const kembali = bayar - total;
-            
-            showToast('Memproses transaksi...', 'info');
-            
-            let allSuccess = true;
-            let failedItems = [];
-            
+
+            // Kurangi stok produk
+            const produk = getProduk();
             for (const item of keranjang) {
-                const result = await createTransaksi(item.id, item.jumlah);
-                if (!result.success) {
-                    allSuccess = false;
-                    failedItems.push(item.nama);
+                const p = produk.find(pr => pr.id === item.id);
+                if (p) {
+                    p.stok -= item.jumlah;
                 }
             }
-            
-            if (allSuccess) {
-                showToast(`✅ Transaksi berhasil! Total: ${formatRupiah(total)} | Kembali: ${formatRupiah(kembali)}`);
-                keranjang = [];
-                updateKeranjangDisplay();
-                closeModalBayar();
-                renderKasir();
-            } else {
-                showToast(`⚠️ Sebagian transaksi gagal: ${failedItems.join(', ')}. Cek stok!`, 'error');
+            setProduk(produk);
+
+            // Simpan transaksi
+            const transaksi = getTransaksi();
+            for (const item of keranjang) {
+                transaksi.push({
+                    id: getNextId(),
+                    produk_nama: item.nama,
+                    jumlah: item.jumlah,
+                    total_harga: item.harga * item.jumlah,
+                    waktu: new Date().toISOString()
+                });
             }
+            setTransaksi(transaksi);
+
+            showToast(`✅ Transaksi berhasil! Total: ${formatRupiah(total)} | Kembali: ${formatRupiah(kembali)}`);
+            keranjang = [];
+            updateKeranjangDisplay();
+            closeModalBayar();
+            renderKasir();
         };
-        
+
         document.addEventListener('input', (e) => {
             if (e.target.id === 'uangBayar') {
                 window.hitungKembalian();
             }
         });
-        
+
         // ============ HALAMAN PRODUK ============
         async function renderProduk() {
             setActiveNav('produk');
-            const produk = await getProduk();
-            
+            const produk = getProduk();
+
             const html = `
                 <div class="bg-white rounded-lg shadow p-6">
                     <div class="flex justify-between items-center mb-6 flex-wrap gap-2">
@@ -442,8 +405,7 @@
                         </table>
                     </div>
                 </div>
-                
-                <!-- Modal Tambah/Edit Produk -->
+
                 <div id="modalProduk" class="modal">
                     <div class="modal-content">
                         <h3 id="modalProdukTitle" class="text-xl font-bold mb-4">Tambah Produk</h3>
@@ -460,7 +422,7 @@
             `;
             document.getElementById('content').innerHTML = html;
         }
-        
+
         window.showTambahProduk = () => {
             document.getElementById('modalProdukTitle').innerHTML = 'Tambah Produk';
             document.getElementById('editId').value = '';
@@ -469,7 +431,7 @@
             document.getElementById('stokProduk').value = '';
             document.getElementById('modalProduk').style.display = 'block';
         };
-        
+
         window.editProduk = (id, nama, harga, stok) => {
             document.getElementById('modalProdukTitle').innerHTML = 'Edit Produk';
             document.getElementById('editId').value = id;
@@ -478,53 +440,56 @@
             document.getElementById('stokProduk').value = stok;
             document.getElementById('modalProduk').style.display = 'block';
         };
-        
+
         window.closeModalProduk = () => {
             document.getElementById('modalProduk').style.display = 'none';
         };
-        
-        window.simpanProduk = async () => {
+
+        window.simpanProduk = () => {
             const id = document.getElementById('editId').value;
             const nama = document.getElementById('namaProduk').value;
-            const harga = document.getElementById('hargaProduk').value;
-            const stok = document.getElementById('stokProduk').value;
-            
+            const harga = parseInt(document.getElementById('hargaProduk').value);
+            const stok = parseInt(document.getElementById('stokProduk').value) || 0;
+
             if (!nama || !harga) {
                 showToast('Lengkapi data!', 'error');
                 return;
             }
-            
-            let result;
+
+            const produk = getProduk();
+
             if (id) {
-                result = await updateProduk(id, nama, harga, stok);
-            } else {
-                result = await createProduk(nama, harga, stok);
-            }
-            
-            if (result.success) {
-                showToast(id ? 'Produk diupdate' : 'Produk ditambahkan');
-                closeModalProduk();
-                renderProduk();
-            } else {
-                showToast(result.message, 'error');
-            }
-        };
-        
-        window.hapusProduk = async (id) => {
-            if (confirm('Yakin hapus produk ini?')) {
-                const result = await deleteProduk(id);
-                if (result.success) {
-                    showToast('Produk dihapus');
-                    renderProduk();
+                const index = produk.findIndex(p => p.id === parseInt(id));
+                if (index !== -1) {
+                    produk[index].nama = nama;
+                    produk[index].harga = harga;
+                    produk[index].stok = stok;
                 }
+            } else {
+                produk.push({ id: getNextId(), nama, harga, stok });
+            }
+
+            setProduk(produk);
+            showToast(id ? 'Produk diupdate' : 'Produk ditambahkan');
+            closeModalProduk();
+            renderProduk();
+        };
+
+        window.hapusProduk = (id) => {
+            if (confirm('Yakin hapus produk ini?')) {
+                let produk = getProduk();
+                produk = produk.filter(p => p.id !== id);
+                setProduk(produk);
+                showToast('Produk dihapus');
+                renderProduk();
             }
         };
-        
+
         // ============ HALAMAN RIWAYAT ============
         async function renderRiwayat() {
             setActiveNav('riwayat');
-            const transaksi = await getTransaksi();
-            
+            const transaksi = getTransaksi();
+
             const html = `
                 <div class="bg-white rounded-lg shadow p-6">
                     <h2 class="text-2xl font-bold mb-6">💰 Riwayat Transaksi</h2>
@@ -557,13 +522,13 @@
             `;
             document.getElementById('content').innerHTML = html;
         }
-        
+
         // ============ HALAMAN HUTANG ============
         async function renderHutang() {
             setActiveNav('hutang');
-            const hutang = await getHutang();
+            const hutang = getHutang();
             const total = hutang.filter(h => h.status === 'belum_lunas').reduce((s, h) => s + h.jumlah, 0);
-            
+
             const html = `
                 <div class="bg-white rounded-lg shadow p-6">
                     <div class="flex justify-between items-center mb-6 flex-wrap gap-2">
@@ -603,7 +568,7 @@
                         </table>
                     </div>
                 </div>
-                
+
                 <div id="modalHutang" class="modal">
                     <div class="modal-content">
                         <h3 class="text-xl font-bold mb-4">Tambah Hutang</h3>
@@ -618,98 +583,118 @@
             `;
             document.getElementById('content').innerHTML = html;
         }
-        
+
         window.showTambahHutang = () => {
             document.getElementById('namaPelanggan').value = '';
             document.getElementById('jumlahHutang').value = '';
             document.getElementById('modalHutang').style.display = 'block';
         };
-        
+
         window.closeModalHutang = () => {
             document.getElementById('modalHutang').style.display = 'none';
         };
-        
-        window.simpanHutang = async () => {
+
+        window.simpanHutang = () => {
             const nama = document.getElementById('namaPelanggan').value;
-            const jumlah = document.getElementById('jumlahHutang').value;
+            const jumlah = parseInt(document.getElementById('jumlahHutang').value);
+
             if (!nama || !jumlah) {
                 showToast('Lengkapi data', 'error');
                 return;
             }
-            const result = await createHutang(nama, jumlah);
-            if (result.success) {
-                showToast('Hutang ditambahkan');
-                closeModalHutang();
-                renderHutang();
-            } else {
-                showToast(result.message, 'error');
-            }
-        };
-        
-        window.lunasHutang = async (id) => {
-            await lunasiHutang(id);
-            showToast('Hutang lunas');
+
+            const hutang = getHutang();
+            hutang.push({
+                id: getNextId(),
+                nama_pelanggan: nama,
+                jumlah: jumlah,
+                status: 'belum_lunas',
+                created_at: new Date().toISOString()
+            });
+            setHutang(hutang);
+            showToast('Hutang ditambahkan');
+            closeModalHutang();
             renderHutang();
         };
-        
-        window.hapusHutang = async (id) => {
-            if (confirm('Hapus hutang ini?')) {
-                await hapusHutang(id);
+
+        window.lunasHutang = (id) => {
+            const hutang = getHutang();
+            const h = hutang.find(item => item.id === id);
+            if (h) {
+                h.status = 'lunas';
+                setHutang(hutang);
+                showToast('Hutang lunas');
                 renderHutang();
             }
         };
-        
+
+        window.hapusHutang = (id) => {
+            if (confirm('Hapus hutang ini?')) {
+                let hutang = getHutang();
+                hutang = hutang.filter(h => h.id !== id);
+                setHutang(hutang);
+                renderHutang();
+            }
+        };
+
         // ============ HALAMAN LAPORAN ============
         async function renderLaporan() {
             setActiveNav('laporan');
-            try {
-                document.getElementById('content').innerHTML = `<div class="bg-white rounded-lg shadow p-6 text-center"><p class="text-gray-500">📊 Memuat laporan...</p></div>`;
-                
-                const laporan = await getLaporanMingguan();
-                const total = laporan.reduce((s, i) => s + (i.omset || 0), 0);
-                
-                if (laporan.length === 0) {
-                    document.getElementById('content').innerHTML = `
-                        <div class="bg-white rounded-lg shadow p-6">
-                            <h2 class="text-2xl font-bold mb-6">📊 Laporan Penjualan</h2>
-                            <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">
-                                <p>⚠️ Belum ada data penjualan.</p>
-                                <p class="text-sm mt-2">Silakan transaksi di menu <strong>Kasir</strong>.</p>
-                            </div>
-                        </div>
-                    `;
-                    return;
-                }
-                
-                let tabelHtml = `<div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-100"><tr><th class="p-3 text-left">Tanggal</th><th class="p-3 text-left">Omset</th></tr></thead><tbody>`;
-                for (const item of laporan) {
-                    tabelHtml += `<tr class="border-b hover:bg-gray-50"><td class="p-3">${item.tanggal}</td><td class="p-3 font-bold text-green-600">${formatRupiah(item.omset)}</td></tr>`;
-                }
-                tabelHtml += `</tbody></table></div>`;
-                
+            const transaksi = getTransaksi();
+
+            // Group by date
+            const laporanMap = {};
+            for (const t of transaksi) {
+                const date = new Date(t.waktu).toLocaleDateString('id-ID');
+                if (!laporanMap[date]) laporanMap[date] = 0;
+                laporanMap[date] += t.total_harga;
+            }
+
+            const laporan = Object.keys(laporanMap).map(tanggal => ({
+                tanggal,
+                omset: laporanMap[tanggal]
+            })).sort((a, b) => new Date(a.tanggal) - new Date(b.tanggal));
+
+            const total = laporan.reduce((s, i) => s + i.omset, 0);
+
+            if (laporan.length === 0) {
                 document.getElementById('content').innerHTML = `
                     <div class="bg-white rounded-lg shadow p-6">
-                        <h2 class="text-2xl font-bold mb-6">📊 Laporan Penjualan 7 Hari Terakhir</h2>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                            <div class="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-lg">
-                                <p class="text-sm">Total Omset</p>
-                                <p class="text-2xl font-bold">${formatRupiah(total)}</p>
-                            </div>
-                            <div class="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-lg">
-                                <p class="text-sm">Periode</p>
-                                <p class="text-2xl font-bold">${laporan.length} Hari</p>
-                            </div>
+                        <h2 class="text-2xl font-bold mb-6">📊 Laporan Penjualan</h2>
+                        <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">
+                            <p>⚠️ Belum ada data penjualan.</p>
+                            <p class="text-sm mt-2">Silakan transaksi di menu <strong>Kasir</strong>.</p>
                         </div>
-                        <h3 class="text-lg font-bold mb-3">Detail Penjualan per Tanggal</h3>
-                        ${tabelHtml}
                     </div>
                 `;
-            } catch (error) {
-                console.error('Error:', error);
-                document.getElementById('content').innerHTML = `<div class="bg-white rounded-lg shadow p-6"><div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded"><p>❌ Gagal memuat laporan</p></div></div>`;
+                return;
             }
+
+            let tabelHtml = `<div class="overflow-x-auto"><table class="w-full"><thead class="bg-gray-100"><tr><th class="p-3 text-left">Tanggal</th><th class="p-3 text-left">Omset</th></tr></thead><tbody>`;
+            for (const item of laporan) {
+                tabelHtml += `<tr class="border-b hover:bg-gray-50"><td class="p-3">${item.tanggal}</td><td class="p-3 font-bold text-green-600">${formatRupiah(item.omset)}</td></tr>`;
+            }
+            tabelHtml += `</tbody></table></div>`;
+
+            document.getElementById('content').innerHTML = `
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-2xl font-bold mb-6">📊 Laporan Penjualan</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                        <div class="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-lg">
+                            <p class="text-sm">Total Omset</p>
+                            <p class="text-2xl font-bold">${formatRupiah(total)}</p>
+                        </div>
+                        <div class="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-lg">
+                            <p class="text-sm">Total Transaksi</p>
+                            <p class="text-2xl font-bold">${transaksi.length}</p>
+                        </div>
+                    </div>
+                    <h3 class="text-lg font-bold mb-3">Detail Penjualan per Tanggal</h3>
+                    ${tabelHtml}
+                </div>
+            `;
         }
-        
+
         // ============ PAGE ROUTER ============
         window.showPage = (page) => {
             if (page === 'kasir') renderKasir();
@@ -718,7 +703,7 @@
             else if (page === 'hutang') renderHutang();
             else if (page === 'laporan') renderLaporan();
         };
-        
+
         // ============ LOAD HALAMAN DEFAULT ============
         renderKasir();
     </script>
